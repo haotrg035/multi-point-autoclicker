@@ -15,14 +15,18 @@ class AutoClickerAppGUI:
         self.root.attributes("-topmost", True)  # Always on top
 
         self.is_clicking = False
+        self.is_watching_click = False
         self.is_recording = False
         self.click_points = []
         self.click_circles = []
         self.click_image = None
         self.click_image_path = os.path.abspath(__file__ + '/../../assets/circle-outline.png')
+        self.current_time_ms = 0
+        self.target_time_ms = 0
+        self.click_interval = 0
 
         self.init_gui(root)
-        self.clocker = InitClock(self.clock_frame)
+        self.clocker = InitClock(self)
         self.recorder = RecordClick(self)
 
         self.init_listeners()
@@ -42,21 +46,25 @@ class AutoClickerAppGUI:
         tk.Label(root, text="Giờ:").place(x=8, y=label_time_y, height=24)
         self.inpHours = tk.Entry(root, width=12)
         self.inpHours.place(x=8, y=input_time_y, height=24)
+        self.inpHours.insert(0, "00")
 
         # Minute input
         tk.Label(root, text="Phút:").place(x=94, y=label_time_y, height=24)
         self.inpMinutes = tk.Entry(root, width=12)
         self.inpMinutes.place(x=94, y=input_time_y, height=24)
+        self.inpMinutes.insert(0, "00")
 
         # Second input
         tk.Label(root, text="Giây:").place(x=180, y=label_time_y, height=24)
         self.inpSeconds = tk.Entry(root, width=12)
         self.inpSeconds.place(x=180, y=input_time_y, height=24)
+        self.inpSeconds.insert(0, "00")
 
         # Millisecond input
         tk.Label(root, text="Mili giây:").place(x=266, y=label_time_y, height=24)
         self.inpMilseconds = tk.Entry(root, width=12)
         self.inpMilseconds.place(x=266, y=input_time_y, height=24)
+        self.inpMilseconds.insert(0, "00")
 
         # Interval input
         tk.Label(root, text="Lần chạy:").place(x=266, y=input_time_y + 25, height=24)
@@ -71,7 +79,7 @@ class AutoClickerAppGUI:
         self.inpDelay.place(x=178, y=section_two_y + 44, height=22)
 
         # Execute Click Button
-        self.btnStartClick = tk.Button(root, text="Chạy Auto [F3]", command=self.handle_execute_click)
+        self.btnStartClick = tk.Button(root, text="Chạy Auto [F3]", command=self.handle_start_auto_click)
         self.btnStartClick.place(x=8, y=input_time_y + 30, width=254, height=46)
 
         # Record Button
@@ -105,24 +113,45 @@ class AutoClickerAppGUI:
         self.click_points.append((x, y, self.inpDelay.get()))
         print(f"Đã ghi nhận click tại vị trí: ({x}, {y})")
 
-    # Event Handlers (Cần phát triển thêm cho chức năng)
-    def handle_execute_click(self):
-        self.is_clicking = not self.is_clicking
-        if self.is_clicking and not self.is_recording:
+    def update_inputs(self):
+        self.click_interval = int(self.inpInterval.get())    
+        self.target_time_ms = (int(self.inpHours.get()) * 3600 * 1000) \
+            + (int(self.inpMinutes.get()) * 60 * 1000) \
+            + (int(self.inpSeconds.get()) * 1000) \
+            + int(self.inpMilseconds.get())
+    
+    def start_clicking(self):
+        if self.is_watching_click and not self.is_recording:
             self.recorder.hide_circles()
+            self.is_clicking = True
             self.clicker = Clicker(self)
             self.clicker.start()
+    
+    def stop_clicking(self):
+        self.recorder.show_circles()
+        self.is_clicking = False
+        self.is_watching_click = False
+
+    def toggle_auto_click(self):
+        if self.is_clicking or self.is_watching_click:
+            self.stop_clicking()
         else:
-            self.recorder.show_circles()
             self.is_clicking = False
-            self.clicker.join()
-        self.btnStartClick.config(text=f"{'Dừng' if self.is_clicking else 'Chạy'} Auto [F3]")
+            self.is_watching_click = True
+        self.update_start_click_button()
+
+    def handle_start_auto_click(self):
+        self.update_inputs()
+        self.toggle_auto_click()
 
     def handle_record_click(self):
         self.recorder.toggle_recording()
 
     def handle_toggle_show_points(self):
         self.recorder.toggle_show_points()
+
+    def update_start_click_button(self):
+        self.btnStartClick.config(text="Đang chạy... [F3]" if (self.is_clicking or self.is_watching_click) else "Chạy Auto [F3]")
 
     def init_listeners(self):
         self.start_f2_kb_listener()
@@ -140,7 +169,7 @@ class AutoClickerAppGUI:
     def start_f3_kb_listener(self):
         def on_press(key):
             if key == Key.f3:
-                self.handle_execute_click()
+                self.handle_start_auto_click()
                 
         self.f3_listener = KeyListener(on_press=on_press)
         self.f3_listener.start()
@@ -163,9 +192,12 @@ class AutoClickerAppGUI:
 
         # Dừng vòng lặp tkinter và thoát ứng dụng
         self.root.quit()
+        self.clocker.stop_clock()
         self.esc_listener.stop()
         self.f3_listener.stop()
         self.f2_listener.stop()
+        self.recorder.stop_mouse_listener()
+        self.root.destroy()
 
 # Khởi chạy giao diện
 def InitGUI():
